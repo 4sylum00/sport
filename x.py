@@ -3,7 +3,7 @@ import requests
 from urllib.parse import urlparse, parse_qs
 
 XROMAPIURL = "https://config.e-droid.net/srv/config.php?v=197&vname=9.8&idapp=3579183&idusu=0&codggp=0&am=0&idlit=&paenv=1&pa=IT&pn=xromtv.italia&fus=01&01=00000000&aid=41fa0c253a5ef255"
-XROMSKYOPAGEURL = "https://html.e-droid.net/html/get_html.php?ida=3579183&ids=37001286&fum=1769379192"
+XROMSKYOPAGEURL = "https://html.e-droid.net/html/get_html.php?ida=3579183&ids=37001286&fum=1769767566"
 
 DECODEMAP = {
     ' ': '2', '!': 'g', '#': 'h', '$': 'Y', '%': 'f', '&': 'X', '(': 'F', '+': 'Q',
@@ -15,7 +15,7 @@ DECODEMAP = {
     '[': 'd', '^': '.', '_': 'e', 'a': 'K', 'b': '/', 'c': 's', 'd': '=', 'e': 'l',
     'f': ')', 'g': '6', 'h': 'r', 'i': 'G', 'k': 'L', 'm': 'b', 'o': 'I', 'p': 'm',
     'q': 'u', 's': 'c', 't': 'P', 'u': 'x', 'w': 'o', 'x': 'N', 'y': 'y', 'z': '?',
-    '}': 'p', '~': 'S',
+    '}': 'p', '~': 'S', ')': '%'
 }
 
 def decode_xrom_url(text: str) -> str:
@@ -23,6 +23,10 @@ def decode_xrom_url(text: str) -> str:
 
 def extract_json_urls(config_text):
     urls = re.findall(r'https://xromtv\.com/[^"\'\s]+\.json', config_text)
+    return urls
+
+def extract_m3u_urls(config_text):
+    urls = re.findall(r'https://[^"\'\s]+\.m3u', config_text)
     return urls
 
 def fetch_html_page(url):
@@ -140,8 +144,11 @@ def extract_channels_from_html(html_content, config_text):
 def extract_playlist_json_urls(config_text):
         print("\n" + "="*80)
         print("PLAYLIST M3U:")
-        print(extract_json_urls(fetch_html_page(XROMSKYOPAGEURL)))
-        print(extract_json_urls(config_text))
+        playlist = []
+        playlist.extend(extract_m3u_urls(fetch_html_page(XROMSKYOPAGEURL)))
+        playlist.extend(extract_m3u_urls(config_text))
+        playlist.extend(extract_json_urls(config_text))
+        print(playlist)
 
 if __name__ == "__main__":
     config_text = fetch_xrom_config()
