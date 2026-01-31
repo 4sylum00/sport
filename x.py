@@ -76,7 +76,8 @@ def extract_ppv_html_content(config_text):
 
 def extract_channels_from_html(html_content, config_text):
     # rgex per trovare i tag <a class="canale">
-    channel_pattern = r'<a\s+class="canale"\s+href="go:([^"]+)"[^>]*>.*?<p>([^<]+)</p>.*?</a>'
+    #channel_pattern = r'<a\s+class="canale"\s+href="go:([^"]+)"[^>]*>.*?<p>([^<]+)</p>.*?</a>'
+    channel_pattern = r'<a\s+class="canale[^"]*"\s+href="go:([^"]+)"[^>]*>.*?<p>([^<]+)</p>.*?</a>'
     
     channels = re.findall(channel_pattern, html_content, re.DOTALL)
     
