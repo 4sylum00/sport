@@ -17,6 +17,7 @@ DECODEMAP = {
     'q': 'u', 's': 'c', 't': 'P', 'u': 'x', 'w': 'o', 'x': 'N', 'y': 'y', 'z': '?',
     '}': 'p', '~': 'S', ')': '%'
 }
+playlist = []
 
 def decode_xrom_url(text: str) -> str:
     return ''.join(DECODEMAP.get(char, char) for char in text)
@@ -49,18 +50,22 @@ def fetch_xrom_config():
         return None, []
     
 
-
-def extract_ppv_html_content(config_text):
+def extract_ppv_html_content(config_text, id_list):
     import re
-    id_pattern = r's(\d+)_idgo=X-SOLO-PPV'
+    
+    escaped_ids = [re.escape(id_val) for id_val in id_list]
+    ids_pattern = '|'.join(escaped_ids)
+    
+    id_pattern = rf's(\d+)_idgo=({ids_pattern})'
     matches = re.findall(id_pattern, config_text)
     
     if not matches:
-        print("Nessun ID con X-SOLO-PPV trovato")
-        return
-
+        print(f"Nessun ID trovato per: {', '.join(id_list)}")
+        return []
     
-    for section_id in matches:
+    found_section_ids = [match[0] for match in matches]
+    
+    for section_id in found_section_ids:
         full_id = f"s{section_id}"
         html_pattern = rf"s{section_id}_html=([\s\S]*?)(?=s\d+_|$)"
         
@@ -68,11 +73,22 @@ def extract_ppv_html_content(config_text):
         
         if html_match:
             html_content = html_match.group(1).strip()
+            if html_content.startswith("GET_"):
+                html_code = re.search(r'GET_(\d+)', html_content)
+                if html_code:
+                    html_page_url = f"https://html.e-droid.net/html/get_html.php?ida=3579183&ids={section_id}&fum={html_code.group(1)}"
+                    html_content = fetch_html_page(html_page_url)
+                    html_content = html_content.replace('@MNQ@','<').replace('@CCORCH@',']')
+                    playlist.extend(extract_m3u_urls(html_content))
+                    playlist.extend(extract_json_urls(html_content))
+                else:
+                    print(f"Codice HTML non valido per {full_id}")
+                    continue
             extract_channels_from_html(html_content, config_text)
         else:
             print(f"Nessun HTML trovato per {full_id}")
     
-    return matches
+    return found_section_ids
 
 def extract_channels_from_html(html_content, config_text):
     # rgex per trovare i tag <a class="canale">
@@ -82,7 +98,6 @@ def extract_channels_from_html(html_content, config_text):
     channels = re.findall(channel_pattern, html_content, re.DOTALL)
     
     if not channels:
-        print("Nessun canale trovato nell'html")
         return []
     
     
@@ -143,16 +158,16 @@ def extract_channels_from_html(html_content, config_text):
     return results
 
 def extract_playlist_json_urls(config_text):
-        print("\n" + "="*80)
-        print("PLAYLIST M3U:")
-        playlist = []
+        
         playlist.extend(extract_m3u_urls(fetch_html_page(XROMSKYOPAGEURL)))
         playlist.extend(extract_m3u_urls(config_text))
         playlist.extend(extract_json_urls(config_text))
-        print(playlist)
 
 if __name__ == "__main__":
     config_text = fetch_xrom_config()
     if config_text:
         extract_playlist_json_urls(config_text)
-        extract_ppv_html_content(config_text)
+        extract_ppv_html_content(config_text,['X-SOLO-PPV','XROM-EVENT'])
+        
+        print("\n" + "="*80)
+        print(f"PLAYLIST M3U: {playlist}")
