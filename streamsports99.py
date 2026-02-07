@@ -3,6 +3,7 @@ import urllib.parse
 import requests
 import json
 import time
+import base64
 
 def convert_base(s, base):
     result = 0
@@ -81,6 +82,11 @@ def fetch_channels_sports(api_url, headers=None):
                     tournament = event.get('tournament', '')
                     home_team = event.get('homeTeam', '')
                     away_team = event.get('awayTeam', '')
+                    status = event.get('status', 'unknown')
+
+                    if status == 'offline' or status == 'finished':
+                        continue
+                    
                     
                     match_info = f"{tournament} - {home_team} vs {away_team}"
                     
@@ -114,10 +120,16 @@ def get_stream_url(player_url):
         r.raise_for_status()
 
         js = decode_obfuscated_js(r.text)
+        js = js.replace("\\'", "'").replace('\\"', '"')
         if not js:
             return None
 
-        return find_stream_url(js)
+        deob_result = auto_deobfuscate_js(js)
+
+        url = deob_result.get('concatenations', [])[1]['decoded'] if len(deob_result.get('concatenations', [])) > 1 else ''
+        #print(deob_result)
+        #return find_stream_url(js)
+        return {'url': url} 
     except:
         return None
     
@@ -126,7 +138,7 @@ def get_streams(channels):
     Recupera gli stream dai canali forniti
     """
     if not channels:
-        print("Errore recupero canali")
+        print("Nessun canale trovato")
         return
 
     print(f"Trovati {len(channels)} canali\n")
@@ -147,6 +159,113 @@ def get_streams(channels):
         print(f"{i}. {ch['name']} ({ch['code']}) - {ch['status']}")
         print(f"   Stream: {stream['url']}")       
 
+
+def normalize_js_code(js_code: str) -> str:
+    # pulizia js
+    js_code = js_code.replace("\\'", "'").replace('\\"', '"').replace("\'", "'")
+    js_code = re.sub(r'\s+', ' ', js_code)
+    return js_code
+
+def pum_decode(s: str) -> str:
+    s = s.replace('-', '+').replace('_', '/')
+    while len(s) % 4 != 0:
+        s += '='
+    try:
+        raw = base64.b64decode(s)
+        return raw.decode('utf-8')
+    except Exception:
+        try:
+            raw = base64.b64decode(s)
+            return raw.decode('latin-1')
+        except Exception:
+            return None
+
+def find_decode_function(js_code: str) -> str:
+    #print(js_code)
+    # pattern di ricerca di fuzioni che usano atob
+    patterns = [
+        r'function\s+(\w+)\s*\(\s*str\s*\)\s*\{[^}]{0,500}atob',
+        r'function\s+(\w+)\s*\(\s*\w+\s*\)\s*\{[^}]{0,500}atob',
+        r'(?:const|let|var)\s+(\w+)\s*=\s*function\s*\(\s*str\s*\)\s*\{[^}]{0,500}atob',
+        r'function\s+(\w+)\s*\([^)]+\)\s*\{(?:[^}]|[\r\n]){0,500}(?:replace.*atob|atob.*replace)',
+    ]
+
+    for pattern in patterns:
+        match = re.search(pattern, js_code, re.IGNORECASE | re.DOTALL)
+        if match:
+            return match.group(1)
+
+    return None
+
+def extract_base64_strings(js_code: str) -> dict:
+    pattern = r'["\']([A-Za-z0-9_\-+=]{8,})["\']' 
+    matches = re.findall(pattern, js_code)
+
+    base64_dict = {}
+    for match in matches:
+        decoded = pum_decode(match)
+        #print(decoded)
+        if decoded:
+            if all(ord(c) < 128 and (c.isprintable() or c in '\\n\\r\\t') for c in decoded):
+                base64_dict[match] = decoded
+
+    return base64_dict
+
+def find_variable_assignments(js_code: str) -> dict:
+    pattern = r'(?:const|let|var)\s+(\w+)\s*=\s*["\']([^"\']+)["\']'
+    matches = re.findall(pattern, js_code)
+    return {name: value for name, value in matches}
+
+def find_concatenations(js_code: str, var_dict: dict, decode_func_name: str) -> list:
+    pattern = rf'(?:const|let|var)\s+(\w+)\s*=\s*((?:{decode_func_name}\([^)]+\)\s*\+?\s*)+);'
+    matches = re.findall(pattern, js_code, re.MULTILINE | re.DOTALL)
+
+    results = []
+    for var_name, concat_expr in matches:
+        func_calls = re.findall(rf'{decode_func_name}\((\w+)\)', concat_expr)
+
+        decoded_parts = []
+        for arg in func_calls:
+            if arg in var_dict:
+                decoded = pum_decode(var_dict[arg])
+                if decoded:
+                    decoded_parts.append(decoded)
+
+        if decoded_parts:
+            full_string = ''.join(decoded_parts)
+            results.append({
+                'variable': var_name,
+                'parts': func_calls,
+                'decoded': full_string
+            })
+
+    return results
+
+def auto_deobfuscate_js(js_code: str) -> dict:
+
+    js_code = normalize_js_code(js_code)
+    decode_func_name = find_decode_function(js_code)
+
+    if not decode_func_name:
+        return {
+            'error': 'Nessuna funzione di decode trovata',
+            'decode_function': None,
+            'variables': {},
+            'concatenations': [],
+            'all_base64_decoded': {}
+        }
+
+    var_dict = find_variable_assignments(js_code)
+    concatenations = find_concatenations(js_code, var_dict, decode_func_name)
+    all_base64 = extract_base64_strings(js_code)
+
+    return {
+        'decode_function': decode_func_name,
+        'variables': var_dict,
+        'concatenations': concatenations,
+        'all_base64_decoded': all_base64
+    }
+
 def get_live_tv():
     """
     Recupera stream canali TV Live
@@ -166,6 +285,6 @@ def get_sports():
     get_streams(fetch_channels_sports(api_sports))
 
 if __name__ == "__main__":
+    print("Le chiamate all' url della stream devono avere header Origin e Referer = https://cdn-live.tv/")
     get_sports()
     get_live_tv()
-    
