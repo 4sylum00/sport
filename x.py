@@ -1,6 +1,6 @@
 import re
 import requests
-from urllib.parse import urlparse, parse_qs
+from urllib.parse import urlparse, parse_qs, unquote
 
 XROMAPIURL = "https://config.e-droid.net/srv/config.php?v=197&vname=9.8&idapp=3579183&idusu=0&codggp=0&am=0&idlit=&paenv=1&pa=IT&pn=xromtv.italia&fus=01&01=00000000&aid=41fa0c253a5ef255"
 XROMSKYOPAGEURL = "https://html.e-droid.net/html/get_html.php?ida=3579183&ids=37001286&fum=1769767566"
@@ -116,14 +116,13 @@ def extract_channels_from_html(html_content, config_text, section_id):
                         keyid = params['keyid'][0]
                         key = params['key'][0]
                         clearkey = f"{keyid}:{key}"
-
+            print(f"Canale: {channel_name}, URL: {decoded_url}")
             results.append({
                 'channel_name': channel_name,
                 'url': decoded_url,
                 'clearkey': clearkey,
                 'license': license_url
             })
-
     return results
 
 def extract_ppv_html_content(config_text, id_list):
@@ -139,9 +138,11 @@ def extract_ppv_html_content(config_text, id_list):
         print(f"Nessun ID trovato per: {', '.join(id_list)}")
         return []
 
+    print(f"ID trovati per {', '.join(id_list)}: {[match[0] for match in matches]}")
     found_section_ids = [match[0] for match in matches]
 
     for section_id in found_section_ids:
+        print(f"\nElaborazione sezione ID: {section_id}")
         html_pattern = rf"s{section_id}_html=([\s\S]*?)(?=s\d+_|$)"
         html_match = re.search(html_pattern, config_text)
 
@@ -156,6 +157,16 @@ def extract_ppv_html_content(config_text, id_list):
                     html_content = fetch_html_page(html_page_url)
                     if html_content:
                         html_content = html_content.replace('@MNQ@','<').replace('@CCORCH@',']')
+                        jsfuck_regex = r'<script[^>]*>\s*(?:/\*(?:.|\n)*?\*/\s*)*\s*([\[!\]\(\)\+]+)\s*(?:/\*(?:.|\n)*?\*/\s*)*\s*</script>'
+                        jsfuck_matches = re.findall(jsfuck_regex, html_content)
+                        if jsfuck_matches:
+                            print(f"JSFuck trovato in sezione {section_id}, decodificando...")
+                            playlist_unjsfucked = unjsfuck(html_content)
+                            if playlist_unjsfucked:
+                                playlist.extend(playlist_unjsfucked)
+                            else:
+                                print(f"Decodifica JSFuck fallita per sezione {section_id}")
+
 
                         playlist.extend(extract_m3u_urls(html_content))
                         playlist.extend(extract_json_urls(html_content))
@@ -164,6 +175,47 @@ def extract_ppv_html_content(config_text, id_list):
 
             channels.extend(extract_channels_from_html(html_content, config_text, section_id))
     print(f"Canali PPV estratti: {len(channels)}")
+
+def unjsfuck(htmlcode):
+    try:
+        from playwright.sync_api import sync_playwright
+        with sync_playwright() as p:
+            playlist = []
+
+            def log_request(request):
+                if request.url.endswith('.m3u') or request.url.endswith('.json'):
+                    url = request.url
+                    if '?url=' in url and "https%3A%2F%2F" in url:
+                        url = url.split('?url=')[1]
+                        url = unquote(url)
+
+                    if url not in playlist:
+                        playlist.append(url)
+                        print(f"> {url}")
+            def handle_mpd(route):
+                if route.request.url.endswith('.mpd'):
+                    route.abort()
+                    #print(f"MPD blocked: {route.request.url}")
+
+               
+
+            browser = p.chromium.launch(headless=True)
+            page = browser.new_page()
+
+           
+            page.goto("http://xromtv.com")
+            
+            page.route("**/*.mpd", handle_mpd)
+            page.on("request", log_request)
+            page.set_content(htmlcode)
+            page.evaluate("init()")
+            page.wait_for_timeout(3000)
+
+            browser.close()
+            return playlist
+    except Exception as e:
+        return None
+
 
 def extract_playlist_json_urls(config_text):
     sky_page = fetch_html_page(XROMSKYOPAGEURL)
@@ -275,7 +327,7 @@ def main():
 
     if config_text:
         extract_playlist_json_urls(config_text)
-        extract_ppv_html_content(config_text, ['X-SOLO-PPV', 'XROM-EVENT', 'X-CAN-SKY'])
+        extract_ppv_html_content(config_text, ['X-SOLO-PPV', 'XROM-EVENT', 'X-CAN-SKY', 'XROM-SKY26'])
 
     all_channels = []
 
