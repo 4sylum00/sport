@@ -4,7 +4,8 @@ from urllib.parse import urlparse, parse_qs, unquote
 
 XROMAPIURL = "https://config.e-droid.net/srv/config.php?v=197&vname=9.8&idapp=3579183&idusu=0&codggp=0&am=0&idlit=&paenv=1&pa=IT&pn=xromtv.italia&fus=01&01=00000000&aid=41fa0c253a5ef255"
 XROMSKYOPAGEURL = "https://html.e-droid.net/html/get_html.php?ida=3579183&ids=37001286&fum=1769767566"
-PROXY_URL = "https://xromtv-cors-proxy-m3u.xrtv-friends-only.workers.dev?url="
+PROXY_URL = "https://corsproxy.io/"
+PROXY_URL2 = "https://api.codetabs.com/v1/proxy/?quest="
 
 DECODEMAP = {
     ' ': '2', '!': 'g', '#': 'h', '$': 'Y', '%': 'f', '&': 'X', '(': 'F', '+': 'Q',
@@ -225,15 +226,20 @@ def extract_playlist_json_urls(config_text):
     playlist.extend(extract_json_urls(config_text))
 
 def download_playlist_via_proxy(url):
+    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3"}
     try:
         proxy_url = f"{PROXY_URL}{url}"
-        print(f"\nDownloading: {url}")
-        headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3"}
+        print(f"\nDownloading: {proxy_url}")        
         response = requests.get(proxy_url, headers=headers, timeout=30)
         response.raise_for_status()
         return response.text
     except Exception as e:
         print(f"Errore download {url}: {e}")
+        proxy_url = f"{PROXY_URL2}{url}"
+        print(f"\nDownloading: {proxy_url}")        
+        response = requests.get(proxy_url, headers=headers, timeout=30)
+        response.raise_for_status()
+        return response.text
         return None
 
 def parse_m3u_content(content):
@@ -327,7 +333,7 @@ def main():
 
     if config_text:
         extract_playlist_json_urls(config_text)
-        extract_ppv_html_content(config_text, ['X-SOLO-PPV', 'XROM-EVENT', 'X-CAN-SKY', 'XROM-SKY26'])
+        extract_ppv_html_content(config_text, ['X4CAN4SKY','XROM4EVENT','X4SOLO4PPV','XROM4SKY26'])
 
     all_channels = []
 
