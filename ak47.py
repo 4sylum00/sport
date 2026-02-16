@@ -244,7 +244,6 @@ if __name__ == "__main__":
         print(f"{event}")
         print(f"   Categoria: {event.category}")
         print(f"   Data/Ora: {event.date} {event.time}")
-        print(f"   Priorità: {event.priority}")
 
         if stream_links:
             print(f"   Stream disponibili: {len(stream_links)}")
