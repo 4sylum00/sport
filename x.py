@@ -211,7 +211,7 @@ def unjsfuck(htmlcode):
             page.on("request", log_request)
             page.set_content(htmlcode)
             page.evaluate("init()")
-            page.wait_for_timeout(3000)
+            #page.wait_for_timeout(3000)
 
             browser.close()
             return playlist
@@ -244,6 +244,32 @@ def download_playlist_via_proxy(url):
             response = requests.get(proxy_url, headers=headers, timeout=30)
             response.raise_for_status()
             return response.text
+        
+def handle_group_title(line):
+    group_title_match = re.search(r'group-title="([^"]+)"', line)
+    channel_name = line.split(',', 1)[-1].strip().upper()
+    new_group_title = "SKY INTRATTENIMENTO"
+
+    if "SKY SPORT" in channel_name or "CALCIO" in channel_name:
+        new_group_title = "SKY SPORT"
+    elif "CINEMA" in channel_name:
+        new_group_title = "SKY CINEMA"
+    elif "SKY" in channel_name and "SPORT" not in channel_name and "CINEMA" not in channel_name:
+        new_group_title = "SKY INTRATTENIMENTO"
+    elif "DAZN" in channel_name:
+        new_group_title = "DAZN"
+
+    if group_title_match:
+        group_title = group_title_match.group(1)
+        if "EVENTI" in group_title:
+            new_group_title = "EVENTI"
+        line = line.replace(f'group-title="{group_title}"', f'group-title="{new_group_title}"')
+
+    if 'group-title="' not in line:
+        clean_channel_name = channel_name.replace('FHD','')
+        tvg_id = '.'.join(word.capitalize() for word in clean_channel_name.split())+'.it'
+        line = line.replace('#EXTINF:-1', f'#EXTINF:-1 group-title="{new_group_title}" tvg-id="{tvg_id}"')    
+    return line
 
 def parse_m3u_content(content):
     if not content:
@@ -257,6 +283,9 @@ def parse_m3u_content(content):
         line = lines[i].strip()
 
         if line.startswith('#EXTINF'):
+            
+            line = handle_group_title(line)
+
             channel_info = {
                 'extinf': line,
                 'kodiprop': [],
@@ -303,8 +332,7 @@ def channel_dict_to_m3u(channel_dict):
     url = channel_dict.get('url', '')
     clearkey = channel_dict.get('clearkey')
     license_url = channel_dict.get('license')
-
-    lines.append(f'#EXTINF:-1,{name}')
+    lines.append(handle_group_title(f'#EXTINF:-1,{name}'))
     lines.append('#KODIPROP:inputstream.adaptive.manifest_type=mpd')
 
     if license_url:
