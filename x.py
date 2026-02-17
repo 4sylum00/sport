@@ -149,6 +149,7 @@ def extract_ppv_html_content(config_text, id_list):
 
         if html_match:
             html_content = html_match.group(1).strip()
+            html_content = html_content.replace('\r\n',' ').replace('@MNQ@','<').replace('@CCORCH@',']')
 
             if html_content.startswith("GET_"):
                 html_code = re.search(r'GET_(\d+)', html_content)
@@ -158,24 +159,26 @@ def extract_ppv_html_content(config_text, id_list):
                     html_content = fetch_html_page(html_page_url)
                     if html_content:
                         html_content = html_content.replace('@MNQ@','<').replace('@CCORCH@',']')
-                        jsfuck_regex = r'<script[^>]*>\s*(?:/\*(?:.|\n)*?\*/\s*)*\s*([\[!\]\(\)\+]+)\s*(?:/\*(?:.|\n)*?\*/\s*)*\s*</script>'
-                        jsfuck_matches = re.findall(jsfuck_regex, html_content)
-                        if jsfuck_matches:
-                            print(f"JSFuck trovato in sezione {section_id}, decodificando...")
-                            playlist_unjsfucked = unjsfuck(html_content)
-                            if playlist_unjsfucked:
-                                playlist.extend(playlist_unjsfucked)
-                            else:
-                                print(f"Decodifica JSFuck fallita per sezione {section_id}")
-
-
                         playlist.extend(extract_m3u_urls(html_content))
                         playlist.extend(extract_json_urls(html_content))
                 else:
                     continue
 
+
+            if check_jsfuck(html_content):
+                print(f"JSFuck trovato in sezione {section_id}, decodificando...")
+                playlist_unjsfucked = unjsfuck(html_content)
+                if playlist_unjsfucked:
+                    playlist.extend(playlist_unjsfucked)
+                else:
+                    print(f"Decodifica JSFuck fallita per sezione {section_id}")
             channels.extend(extract_channels_from_html(html_content, config_text, section_id))
     print(f"Canali PPV estratti: {len(channels)}")
+
+def check_jsfuck(html_content):
+    jsfuck_regex = r'<script[^>]*>\s*(?:/\*(?:.|\n)*?\*/\s*)*\s*([\[!\]\(\)\+]+)\s*(?:/\*(?:.|\n)*?\*/\s*)*\s*</script>'
+    jsfuck_matches = re.findall(jsfuck_regex, html_content)
+    return jsfuck_matches
 
 def unjsfuck(htmlcode):
     try:
@@ -228,19 +231,24 @@ def extract_playlist_json_urls(config_text):
 def download_playlist_via_proxy(url):
     headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3"}
     try:
-        proxy_url = f"{PROXY_URL}{url}"
-        print(f"\nDownloading: {proxy_url}")        
-        response = requests.get(proxy_url, headers=headers, timeout=30)
+        print(f"\nDownloading No proxy: {url}")
+        response = requests.get(url, headers=headers, timeout=30)
         response.raise_for_status()
         return response.text
-    except Exception as e:
-        print(f"Errore download {url}: {e}")
-        proxy_url = f"{PROXY_URL2}{url}"
-        print(f"\nDownloading: {proxy_url}")        
-        response = requests.get(proxy_url, headers=headers, timeout=30)
-        response.raise_for_status()
-        return response.text
-        return None
+    except Exception as e:    
+        try:
+            proxy_url = f"{PROXY_URL}{url}"
+            print(f"\nDownloading: {proxy_url}")        
+            response = requests.get(proxy_url, headers=headers, timeout=30)
+            response.raise_for_status()
+            return response.text
+        except Exception as e:
+            print(f"Errore download {url}: {e}")
+            proxy_url = f"{PROXY_URL2}{url}"
+            print(f"\nDownloading: {proxy_url}")        
+            response = requests.get(proxy_url, headers=headers, timeout=30)
+            response.raise_for_status()
+            return response.text
 
 def parse_m3u_content(content):
     if not content:
