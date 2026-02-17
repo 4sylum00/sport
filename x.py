@@ -3,7 +3,6 @@ import requests
 from urllib.parse import urlparse, parse_qs, unquote
 
 XROMAPIURL = "https://config.e-droid.net/srv/config.php?v=197&vname=9.8&idapp=3579183&idusu=0&codggp=0&am=0&idlit=&paenv=1&pa=IT&pn=xromtv.italia&fus=01&01=00000000&aid=41fa0c253a5ef255"
-XROMSKYOPAGEURL = "https://html.e-droid.net/html/get_html.php?ida=3579183&ids=37001286&fum=1769767566"
 PROXY_URL = "https://corsproxy.io/"
 PROXY_URL2 = "https://api.codetabs.com/v1/proxy/?quest="
 
@@ -117,7 +116,6 @@ def extract_channels_from_html(html_content, config_text, section_id):
                         keyid = params['keyid'][0]
                         key = params['key'][0]
                         clearkey = f"{keyid}:{key}"
-            print(f"Canale: {channel_name}, URL: {decoded_url}")
             results.append({
                 'channel_name': channel_name,
                 'url': decoded_url,
@@ -222,9 +220,6 @@ def unjsfuck(htmlcode):
 
 
 def extract_playlist_json_urls(config_text):
-    sky_page = fetch_html_page(XROMSKYOPAGEURL)
-    if sky_page:
-        playlist.extend(extract_m3u_urls(sky_page))
     playlist.extend(extract_m3u_urls(config_text))
     playlist.extend(extract_json_urls(config_text))
 
