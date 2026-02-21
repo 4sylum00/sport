@@ -1,3 +1,4 @@
+import base64
 import re
 import requests
 from urllib.parse import urlparse, parse_qs, unquote
@@ -59,6 +60,8 @@ def extract_channels_from_html(html_content, config_text, section_id):
     channel_pattern = r'<a\s+class="canale[^"]*"\s+href="go:([^"]+)"[^>]*>.*?<p>([^<]+)</p>.*?</a>'
     data_pattern = r'data-id="(?P<id>[^"]+)".*?data-url="go:(?P<url>[^"]+)"'
     channels_found = re.findall(channel_pattern, html_content, re.DOTALL)
+    channel_pattern = r'<div\s+class="btn-item"[^>]*data-url="go:([^"]+)"[^>]*data-id="([^"]+)"'
+    channels_found.extend(re.findall(channel_pattern, html_content, re.DOTALL))
     data_channels = {m['url']: m['id'] for m in re.finditer(data_pattern, html_content, re.DOTALL)}
     
     if not channels_found:
@@ -104,7 +107,8 @@ def extract_channels_from_html(html_content, config_text, section_id):
                 if 'license?id' in clearkey_url:
                     try:
                         channel_name = re.search(r'channel\(([^)]+)\)', decoded_url).group(1)
-                        channel_name = channel_name.replace('sky','sky ').replace('sport','sport ').replace('cinema','cinema ').replace('plus',' plus').upper()+' FHD'
+                        channel_name = channel_name.replace('sky','sky ').replace('sport','sport ').replace('cinema','cinema ').replace('plus',' plus').replace('channel',' channel').replace('network',' network')
+                        channel_name = ' '.join(word.capitalize() for word in channel_name.split())+' FHD'
                     except:
                         pass
                     license_url = clearkey_url
@@ -122,6 +126,8 @@ def extract_channels_from_html(html_content, config_text, section_id):
                 'clearkey': clearkey,
                 'license': license_url
             })
+    if results:
+        print(f"Canali trovati in sezione {section_id}: {[c['channel_name'] for c in results]}")        
     return results
 
 def extract_ppv_html_content(config_text, id_list):
@@ -162,6 +168,27 @@ def extract_ppv_html_content(config_text, id_list):
                 else:
                     continue
 
+            b64_encoding = check_b64(html_content)
+            if b64_encoding:
+                print(f"Base64 trovato in sezione {section_id}, decodificando...")
+                for b64_string in b64_encoding:
+                    try:
+                        decoded_bytes = base64.b64decode(b64_string)
+                        decoded_str = decoded_bytes.decode('utf-8', errors='ignore')
+                        playlist.extend(extract_m3u_urls(decoded_str))
+                        playlist.extend(extract_json_urls(decoded_str))
+                        channels.extend(extract_channels_from_html(decoded_str, config_text, section_id))
+                        if check_jsfuck(decoded_str):
+                            print(f"JSFuck trovato in Base64 decodificato in sezione {section_id}, decodificando...")
+                            playlist_unjsfucked = unjsfuck(decoded_str)
+                            channels.extend(extract_channels_from_html(html_content, config_text, section_id))
+                            if playlist_unjsfucked:
+                                playlist.extend(playlist_unjsfucked)
+                            else:
+                                print(f"Decodifica JSFuck fallita per Base64 in sezione {section_id}")
+                    except Exception as e:
+                        print(f"Errore decodifica Base64 in sezione {section_id}: {e}")    
+
 
             if check_jsfuck(html_content):
                 print(f"JSFuck trovato in sezione {section_id}, decodificando...")
@@ -172,6 +199,11 @@ def extract_ppv_html_content(config_text, id_list):
                     print(f"Decodifica JSFuck fallita per sezione {section_id}")
             channels.extend(extract_channels_from_html(html_content, config_text, section_id))
     print(f"Canali PPV estratti: {len(channels)}")
+
+def check_b64(html):
+    b64_regex = r"atob\s*\(\s*['\"]([^'\"]*)['\"]"
+    b64_matches = re.findall(b64_regex, html)
+    return b64_matches
 
 def check_jsfuck(html_content):
     jsfuck_regex = r'<script[^>]*>\s*(?:/\*(?:.|\n)*?\*/\s*)*\s*([\[!\]\(\)\+]+)\s*(?:/\*(?:.|\n)*?\*/\s*)*\s*</script>'
@@ -222,6 +254,17 @@ def unjsfuck(htmlcode):
 def extract_playlist_json_urls(config_text):
     playlist.extend(extract_m3u_urls(config_text))
     playlist.extend(extract_json_urls(config_text))
+    b64 = check_b64(config_text)
+    if b64:
+        print(f"Base64 trovato in config, decodificando...")
+        for b64_string in b64:
+            try:
+                decoded_bytes = base64.b64decode(b64_string)
+                decoded_str = decoded_bytes.decode('utf-8', errors='ignore')
+                playlist.extend(extract_m3u_urls(decoded_str))
+                playlist.extend(extract_json_urls(decoded_str))
+            except Exception as e:
+                print(f"Errore decodifica Base64 in config: {e}")
 
 def download_playlist_via_proxy(url):
     headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3"}
@@ -364,7 +407,7 @@ def main():
 
     if config_text:
         extract_playlist_json_urls(config_text)
-        extract_ppv_html_content(config_text, ['X4CAN4SKY','XROM4EVENT','X4SOLO4PPV','XROM4SKY26'])
+        extract_ppv_html_content(config_text, ['X4CAN4SKY','XROM4EVENT','X4SOLO4PPV','XROM4SKY26','-XR-ITP91-','-XR-ITP49-','-XR-ITP52-','-XR-ITP98-'])
 
     all_channels = []
 
