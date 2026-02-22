@@ -1,11 +1,15 @@
 import base64
 import re
 import requests
+import time
+import random
 from urllib.parse import urlparse, parse_qs, unquote
 
 XROMAPIURL = "https://config.e-droid.net/srv/config.php?v=197&vname=9.8&idapp=3579183&idusu=0&codggp=0&am=0&idlit=&paenv=1&pa=IT&pn=xromtv.italia&fus=01&01=00000000&aid=41fa0c253a5ef255"
 PROXY_URL = "https://corsproxy.io/"
 PROXY_URL2 = "https://api.codetabs.com/v1/proxy/?quest="
+API_CHANNEL_HD = "https://xromtv.com/secure_stream/secure_stream/generate.php"
+API_EVENTI = "https://xromtv.com/secure_stream/generate.php"
 
 DECODEMAP = {
     ' ': '2', '!': 'g', '#': 'h', '$': 'Y', '%': 'f', '&': 'X', '(': 'F', '+': 'Q',
@@ -402,6 +406,34 @@ def write_m3u_file(channels_list, output_file):
             elif isinstance(channel, dict) and 'channel_name' in channel:
                 f.write(channel_dict_to_m3u(channel) + '\n\n')
 
+def use_generate_api(api_url):
+    print(f"\nUtilizzo API: {api_url}")
+
+    time.sleep(random.uniform(1, 3))
+
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Linux; Android 13; Redmi Note 9 Build/TD1A.221105.001; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/144.0.7559.132 Mobile Safari/537.36 Vinebre",
+        "Host": "xromtv.com",
+        "Origin": "http://localhost",
+        "Referer": "http://localhost/",
+        "sec-ch-ua": 'Not(A:Brand";v="8", "Chromium";v="144", "Android WebView";v="144',
+        "sec-ch-ua-mobile": "?1",
+        "sec-ch-ua-platform": '"Android"',
+        "Sec-Fetch-Dest": "empty",
+        "Sec-Fetch-Mode": "cors",
+        "Sec-Fetch-Site": "cross-site",
+        "X-Requested-With": "xromtv.italia",
+        "Connection": "keep-alive",
+        "Accept": "*/*",
+        "Accept-Encoding": "gzip, deflate, br, zstd",
+        "Accept-Language": "it-IT,it;q=0.9,en-US;q=0.8,en;q=0.7"
+        }
+    get_token = requests.get(api_url, headers=headers, timeout=20)
+    print(f"Token API ricevuto: {get_token.text}")
+    channels = requests.get(get_token.text, headers=headers, timeout=20)
+    return  channels.text
+
+
 def main():
     config_text = fetch_xrom_config()
 
@@ -410,6 +442,9 @@ def main():
         extract_ppv_html_content(config_text, ['X4CAN4SKY','XROM4EVENT','X4SOLO4PPV','XROM4SKY26','-XR-ITP91-','-XR-ITP49-','-XR-ITP52-','-XR-ITP98-'])
 
     all_channels = []
+
+    all_channels.extend(parse_m3u_content(use_generate_api(API_CHANNEL_HD)))
+    all_channels.extend(parse_m3u_content(use_generate_api(API_EVENTI)))
 
     for playlist_url in playlist:
         content = download_playlist_via_proxy(playlist_url)
