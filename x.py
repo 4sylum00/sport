@@ -1,15 +1,20 @@
 import base64
+import hashlib
 import re
 import requests
 import time
 import random
 from urllib.parse import urlparse, parse_qs, unquote
+from Cryptodome.Cipher import AES
+from Cryptodome.Util.Padding import unpad
 
 XROMAPIURL = "https://config.e-droid.net/srv/config.php?v=197&vname=9.8&idapp=3579183&idusu=0&codggp=0&am=0&idlit=&paenv=1&pa=IT&pn=xromtv.italia&fus=01&01=00000000&aid=41fa0c253a5ef255"
 PROXY_URL = "https://corsproxy.io/"
 PROXY_URL2 = "https://api.codetabs.com/v1/proxy/?quest="
 API_CHANNEL_HD = "https://xromtv.com/secure_stream/secure_stream/generate.php"
 API_EVENTI = "https://xromtv.com/secure_stream/generate.php"
+
+_KEY_B64 = 'RDdrUDJtUjl2TDRiVDFjUThqRjB3WjVuSDZnUzN5WDdkSjJwTTlmSzF2QzhiTjR3SDVxVjB6VDhyRzN4UjZqTA=='
 
 DECODEMAP = {
     ' ': '2', '!': 'g', '#': 'h', '$': 'Y', '%': 'f', '&': 'X', '(': 'F', '+': 'Q',
@@ -428,10 +433,34 @@ def use_generate_api(api_url):
         "Accept-Encoding": "gzip, deflate, br, zstd",
         "Accept-Language": "it-IT,it;q=0.9,en-US;q=0.8,en;q=0.7"
         }
-    get_token = requests.get(api_url, headers=headers, timeout=20)
-    print(f"Token API ricevuto: {get_token.text}")
-    channels = requests.get(get_token.text, headers=headers, timeout=20)
-    return  channels.text
+    ok = False
+    while not ok:
+        try:
+            get_token = requests.get(api_url, headers=headers, timeout=20)
+            print(f"Token API ricevuto: {get_token.text}")
+            channels = requests.get(get_token.text, headers=headers, timeout=20)
+            ok = True
+        except Exception as e:
+            print(f"Errore durante la chiamata API: {e}")
+            time.sleep(5)
+    print(f"Risposta API ricevuta, decriptando...")
+    decrypt = decrypt_payload(channels.text)
+    return  decrypt
+
+
+
+def decrypt_payload(payload_b64: str) -> str:
+    try:
+        key_raw = base64.b64decode(_KEY_B64)
+        key = hashlib.sha256(key_raw).digest()
+        data = base64.b64decode(payload_b64)
+        iv = data[:16]
+        ciphertext = data[16:]
+        cipher = AES.new(key, AES.MODE_CBC, iv)
+        decrypted = unpad(cipher.decrypt(ciphertext), AES.block_size)
+        return decrypted.decode('utf-8')
+    except Exception:
+        return ""
 
 
 def main():
