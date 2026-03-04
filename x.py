@@ -414,7 +414,7 @@ def write_m3u_file(channels_list, output_file):
 def use_generate_api(api_url):
     print(f"\nUtilizzo API: {api_url}")
 
-    time.sleep(random.uniform(1, 3))
+    time.sleep(random.uniform(1, 5))
 
     headers = {
         "User-Agent": "Mozilla/5.0 (Linux; Android 13; Redmi Note 9 Build/TD1A.221105.001; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/144.0.7559.132 Mobile Safari/537.36 Vinebre",
@@ -434,15 +434,25 @@ def use_generate_api(api_url):
         "Accept-Language": "it-IT,it;q=0.9,en-US;q=0.8,en;q=0.7"
         }
     ok = False
-    while not ok:
+    counter = 0
+    while True:
+        time.sleep(random.uniform(3, 10))
+        counter += 1
+        if counter > 20:
+            print(f"Raggiunto numero massimo di tentativi per API: {api_url}")
+            return None
         try:
-            get_token = requests.get(api_url, headers=headers, timeout=20)
+            get_token = requests.get(api_url, headers=headers, timeout=60)
             print(f"Token API ricevuto: {get_token.text}")
-            channels = requests.get(get_token.text, headers=headers, timeout=20)
-            ok = True
+            if(get_token.text.startswith("http")):
+                time.sleep(2)
+                channels = requests.get(get_token.text, headers=headers, timeout=60)
+                print(f"Playlist API ricevuta: {channels.text[:100]}...")
+                ok = True
+                break
         except Exception as e:
             print(f"Errore durante la chiamata API: {e}")
-            time.sleep(5)
+            time.sleep(random.uniform(2, 5))
     print(f"Risposta API ricevuta, decriptando...")
     decrypt = decrypt_payload(channels.text)
     return  decrypt
@@ -468,7 +478,7 @@ def main():
 
     if config_text:
         extract_playlist_json_urls(config_text)
-        extract_ppv_html_content(config_text, ['X4CAN4SKY','XROM4EVENT','X4SOLO4PPV','XROM4SKY26','-XR-ITP91-','-XR-ITP49-','-XR-ITP52-','-XR-ITP98-'])
+        extract_ppv_html_content(config_text, ['-XR-ITP91-','-XR-ITP49-','-XR-ITP52-','-XR-ITP98-'])
 
     all_channels = []
 
