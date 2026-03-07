@@ -189,7 +189,7 @@ def extract_ppv_html_content(config_text, id_list):
                         channels.extend(extract_channels_from_html(decoded_str, config_text, section_id))
                         if check_jsfuck(decoded_str):
                             print(f"JSFuck trovato in Base64 decodificato in sezione {section_id}, decodificando...")
-                            playlist_unjsfucked = unjsfuck(decoded_str)
+                            playlist_unjsfucked = runBrowser(decoded_str)
                             channels.extend(extract_channels_from_html(html_content, config_text, section_id))
                             if playlist_unjsfucked:
                                 playlist.extend(playlist_unjsfucked)
@@ -201,7 +201,7 @@ def extract_ppv_html_content(config_text, id_list):
 
             if check_jsfuck(html_content):
                 print(f"JSFuck trovato in sezione {section_id}, decodificando...")
-                playlist_unjsfucked = unjsfuck(html_content)
+                playlist_unjsfucked = runBrowser(html_content)
                 if playlist_unjsfucked:
                     playlist.extend(playlist_unjsfucked)
                 else:
@@ -219,45 +219,69 @@ def check_jsfuck(html_content):
     jsfuck_matches = re.findall(jsfuck_regex, html_content)
     return jsfuck_matches
 
-def unjsfuck(htmlcode):
+
+
+def runBrowser(htmlcode):
+    sniffed_url = None
     try:
+        import os
+        import tempfile
+        import threading
+        from http.server import ThreadingHTTPServer, SimpleHTTPRequestHandler
         from playwright.sync_api import sync_playwright
-        with sync_playwright() as p:
-            playlist = []
+        
 
-            def log_request(request):
-                if request.url.endswith('.m3u') or request.url.endswith('.json'):
-                    url = request.url
-                    if '?url=' in url and "https%3A%2F%2F" in url:
-                        url = url.split('?url=')[1]
-                        url = unquote(url)
+        with tempfile.TemporaryDirectory() as tmpdir:
+            html_path = os.path.join(tmpdir, "index.html")
+            with open(html_path, "w", encoding="utf-8") as f:
+                f.write(htmlcode)
 
-                    if url not in playlist:
-                        playlist.append(url)
-                        print(f"> {url}")
-            def handle_mpd(route):
-                if route.request.url.endswith('.mpd'):
-                    route.abort()
-                    #print(f"MPD blocked: {route.request.url}")
+            class QuietHandler(SimpleHTTPRequestHandler):
+                def __init__(self, *args, **kwargs):
+                    super().__init__(*args, directory=tmpdir, **kwargs)
 
-               
+                def log_message(self, format, *args):
+                    pass
 
-            browser = p.chromium.launch(headless=True)
-            page = browser.new_page()
+            server = ThreadingHTTPServer(("127.0.0.1", 0), QuietHandler)
+            port = server.server_address[1]
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
 
-           
-            page.goto("http://xromtv.com")
-            
-            page.route("**/*.mpd", handle_mpd)
-            page.on("request", log_request)
-            page.set_content(htmlcode)
-            page.evaluate("init()")
-            #page.wait_for_timeout(3000)
+            with sync_playwright() as p:
 
-            browser.close()
-            return playlist
+                def handle_route(route):
+                    nonlocal sniffed_url
+                    url = route.request.url
+
+                    if "generate.php?token" in url:
+                        route.abort()
+                        sniffed_url =url
+                        return sniffed_url
+
+                    if url.endswith(".mpd"):
+                        route.abort()
+                        return
+
+                    route.continue_()
+
+                browser = p.chromium.launch(headless=True)
+                context = browser.new_context()
+                page = context.new_page()
+
+                context.route("**/*", handle_route)
+
+                page.goto(f"http://127.0.0.1:{port}/index.html", wait_until="networkidle")
+
+                browser.close()
+
     except Exception as e:
+        print(f"runBrowser error: {e}")
         return None
+    finally:
+        server.shutdown()
+        server.server_close()
+    return sniffed_url
 
 
 def extract_playlist_json_urls(config_text):
@@ -276,13 +300,28 @@ def extract_playlist_json_urls(config_text):
                 print(f"Errore decodifica Base64 in config: {e}")
 
 def download_playlist_via_proxy(url):
-    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3"}
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Linux; Android 13; Redmi Note 9 Build/TD1A.221105.001; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/144.0.7559.132 Mobile Safari/537.36 Vinebre",
+        "Host": "xromtv.com",
+        "sec-ch-ua": 'Not(A:Brand";v="8", "Chromium";v="144", "Android WebView";v="144',
+        "sec-ch-ua-mobile": "?1",
+        "sec-ch-ua-platform": '"Android"',
+        "Sec-Fetch-Dest": "empty",
+        "Sec-Fetch-Mode": "cors",
+        "Sec-Fetch-Site": "cross-site",
+        "X-Requested-With": "xromtv.italia",
+        "Connection": "keep-alive",
+        "Accept": "*/*",
+        "Accept-Encoding": "gzip, deflate, br, zstd",
+        "Accept-Language": "it-IT,it;q=0.9,en-US;q=0.8,en;q=0.7"
+        }
     try:
         print(f"\nDownloading No proxy: {url}")
         response = requests.get(url, headers=headers, timeout=30)
         response.raise_for_status()
         return response.text
-    except Exception as e:    
+    except Exception as e:  
+        print(e)  
         try:
             proxy_url = f"{PROXY_URL}{url}"
             print(f"\nDownloading: {proxy_url}")        
@@ -294,7 +333,6 @@ def download_playlist_via_proxy(url):
             proxy_url = f"{PROXY_URL2}{url}"
             print(f"\nDownloading: {proxy_url}")        
             response = requests.get(proxy_url, headers=headers, timeout=30)
-            response.raise_for_status()
             return response.text
         
 def handle_group_title(line):
@@ -411,16 +449,11 @@ def write_m3u_file(channels_list, output_file):
             elif isinstance(channel, dict) and 'channel_name' in channel:
                 f.write(channel_dict_to_m3u(channel) + '\n\n')
 
-def use_generate_api(api_url):
-    print(f"\nUtilizzo API: {api_url}")
-
-    time.sleep(random.uniform(1, 5))
+def use_sniff_api(api_url):
 
     headers = {
         "User-Agent": "Mozilla/5.0 (Linux; Android 13; Redmi Note 9 Build/TD1A.221105.001; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/144.0.7559.132 Mobile Safari/537.36 Vinebre",
         "Host": "xromtv.com",
-        "Origin": "http://localhost",
-        "Referer": "http://localhost/",
         "sec-ch-ua": 'Not(A:Brand";v="8", "Chromium";v="144", "Android WebView";v="144',
         "sec-ch-ua-mobile": "?1",
         "sec-ch-ua-platform": '"Android"',
@@ -433,29 +466,12 @@ def use_generate_api(api_url):
         "Accept-Encoding": "gzip, deflate, br, zstd",
         "Accept-Language": "it-IT,it;q=0.9,en-US;q=0.8,en;q=0.7"
         }
-    ok = False
-    counter = 0
-    while True:
-        time.sleep(random.uniform(3, 10))
-        counter += 1
-        if counter > 20:
-            print(f"Raggiunto numero massimo di tentativi per API: {api_url}")
-            return None
-        try:
-            get_token = requests.get(api_url, headers=headers, timeout=60)
-            print(f"Token API ricevuto: {get_token.text}")
-            if(get_token.text.startswith("http")):
-                time.sleep(2)
-                channels = requests.get(get_token.text, headers=headers, timeout=60)
-                print(f"Playlist API ricevuta: {channels.text[:100]}...")
-                ok = True
-                break
-        except Exception as e:
-            print(f"Errore durante la chiamata API: {e}")
-            time.sleep(random.uniform(2, 5))
-    print(f"Risposta API ricevuta, decriptando...")
-    decrypt = decrypt_payload(channels.text)
-    return  decrypt
+    try:
+        html = requests.get(api_url, headers=headers, timeout=60)
+        return runBrowser(html.text)
+    except Exception as e:
+        print(f"Errore durante la richiesta API {api_url}: {e}")
+    return None
 
 
 
@@ -476,18 +492,15 @@ def decrypt_payload(payload_b64: str) -> str:
 def main():
     config_text = fetch_xrom_config()
 
-    if config_text:
-        extract_playlist_json_urls(config_text)
-        extract_ppv_html_content(config_text, ['-XR-ITP91-','-XR-ITP49-','-XR-ITP52-','-XR-ITP98-'])
-
     all_channels = []
-
-    all_channels.extend(parse_m3u_content(use_generate_api(API_CHANNEL_HD)))
-    all_channels.extend(parse_m3u_content(use_generate_api(API_EVENTI)))
-
-    for playlist_url in playlist:
-        content = download_playlist_via_proxy(playlist_url)
+    SNIFFING_APIS = re.findall(r'http://xromtv\.com/anti-sniffing[^"\s]*?\.php', config_text)
+    for urls in SNIFFING_APIS:
+        sniffed_url = use_sniff_api(urls)
+        print(f"SNIFFED: {sniffed_url}")
+        content = download_playlist_via_proxy(sniffed_url)
         if content:
+            if 'EXTM3U' not in content:
+                content = decrypt_payload(content)
             parsed = parse_m3u_content(content)
             print(f"Canali trovati: {len(parsed)}")
             all_channels.extend(parsed)
