@@ -316,22 +316,18 @@ def download_playlist_via_proxy(url):
         "Accept-Language": "it-IT,it;q=0.9,en-US;q=0.8,en;q=0.7"
         }
     try:
-        print(f"\nDownloading No proxy: {url}")
         response = requests.get(url, headers=headers, timeout=30)
         response.raise_for_status()
         return response.text
     except Exception as e:  
         print(e)  
         try:
-            proxy_url = f"{PROXY_URL}{url}"
-            print(f"\nDownloading: {proxy_url}")        
+            proxy_url = f"{PROXY_URL}{url}"      
             response = requests.get(proxy_url, headers=headers, timeout=30)
             response.raise_for_status()
             return response.text
         except Exception as e:
-            print(f"Errore download {url}: {e}")
-            proxy_url = f"{PROXY_URL2}{url}"
-            print(f"\nDownloading: {proxy_url}")        
+            proxy_url = f"{PROXY_URL2}{url}"      
             response = requests.get(proxy_url, headers=headers, timeout=30)
             return response.text
         
@@ -495,6 +491,7 @@ def main():
     all_channels = []
     SNIFFING_APIS = re.findall(r'http://xromtv\.com/anti-sniffing[^"\s]*?\.php', config_text)
     for urls in SNIFFING_APIS:
+        print(f"\n\nTrovato: {urls}")
         sniffed_url = use_sniff_api(urls)
         print(f"SNIFFED: {sniffed_url}")
         content = download_playlist_via_proxy(sniffed_url)
