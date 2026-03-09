@@ -254,8 +254,10 @@ def runBrowser(htmlcode):
                     nonlocal sniffed_url
                     url = route.request.url
 
-                    if "generate.php?token" in url:
+                    if "php?token" in url:
                         route.abort()
+                        if "https://xrom/" in url:
+                            url= url.replace("https://xrom/", "http://xromtv.com/")
                         sniffed_url =url
                         return sniffed_url
 
@@ -489,7 +491,7 @@ def main():
     config_text = fetch_xrom_config()
 
     all_channels = []
-    SNIFFING_APIS = re.findall(r'http://xromtv\.com/anti-sniffing[^"\s]*?\.php', config_text)
+    SNIFFING_APIS = re.findall(r'http://xromtv\.com/[^"\s]*?\.php', config_text)
     for urls in SNIFFING_APIS:
         print(f"\n\nTrovato: {urls}")
         sniffed_url = use_sniff_api(urls)
