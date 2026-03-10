@@ -303,7 +303,7 @@ def extract_playlist_json_urls(config_text):
 
 def download_playlist_via_proxy(url):
     headers = {
-        "User-Agent": "Mozilla/5.0 (Linux; Android 13; Redmi Note 9 Build/TD1A.221105.001; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/144.0.7559.132 Mobile Safari/537.36 Vinebre",
+        "User-Agent": "Mozilla/5.0 (Linux; U; Android 4.2.2; en-us; AFTM Build/JDQ39) AppleWebKit/534.30 (KHTML, like Gecko) Version/4.0 Mobile Safari/534.30",
         "Host": "xromtv.com",
         "sec-ch-ua": 'Not(A:Brand";v="8", "Chromium";v="144", "Android WebView";v="144',
         "sec-ch-ua-mobile": "?1",
@@ -450,7 +450,7 @@ def write_m3u_file(channels_list, output_file):
 def use_sniff_api(api_url):
 
     headers = {
-        "User-Agent": "Mozilla/5.0 (Linux; Android 13; Redmi Note 9 Build/TD1A.221105.001; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/144.0.7559.132 Mobile Safari/537.36 Vinebre",
+        "User-Agent": "Mozilla/5.0 (Linux; U; Android 4.2.2; en-us; AFTM Build/JDQ39) AppleWebKit/534.30 (KHTML, like Gecko) Version/4.0 Mobile Safari/534.30",
         "Host": "xromtv.com",
         "sec-ch-ua": 'Not(A:Brand";v="8", "Chromium";v="144", "Android WebView";v="144',
         "sec-ch-ua-mobile": "?1",
