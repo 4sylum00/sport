@@ -491,8 +491,10 @@ def main():
     config_text = fetch_xrom_config()
 
     all_channels = []
-    SNIFFING_APIS = re.findall(r'http://xromtv\.com/[^"\s]*?\.php', config_text)
+    SNIFFING_APIS = re.findall(r'_url=(https?://xromtv\.com[^]]+)', config_text)
     for urls in SNIFFING_APIS:
+        if 'login' in urls:
+            continue
         print(f"\n\nTrovato: {urls}")
         sniffed_url = use_sniff_api(urls)
         print(f"SNIFFED: {sniffed_url}")
