@@ -174,6 +174,9 @@ def extract_ppv_html_content(config_text, id_list):
                         html_content = html_content.replace('@MNQ@','<').replace('@CCORCH@',']')
                         playlist.extend(extract_m3u_urls(html_content))
                         playlist.extend(extract_json_urls(html_content))
+                        urls = recursiveRunBrowser(html_content);
+                        if urls:
+                            playlist.extend(urls)
                 else:
                     continue
 
@@ -220,9 +223,22 @@ def check_jsfuck(html_content):
     return jsfuck_matches
 
 
+def recursiveRunBrowser(htmlcode):
+    urls = None
+    nexthtml=htmlcode
+
+    while (nexthtml):
+        urls, nexthtml = runBrowser(nexthtml)
+        if(urls):
+            return urls
+    
+    return None
+    
 
 def runBrowser(htmlcode):
     sniffed_url = None
+    htmlcode=injectCodeLogging(htmlcode)
+    nexthtml = None
     try:
         import os
         import tempfile
@@ -249,6 +265,21 @@ def runBrowser(htmlcode):
             thread.start()
 
             with sync_playwright() as p:
+                
+                def xx(x):
+                    print(x)
+                def handle_log(log):
+                    nonlocal nexthtml
+                    nonlocal sniffed_url
+                    content = log.text
+                    urls = re.findall(r'https?://[^"\\]+\.php', content)
+                    if(urls):
+                        sniffed_url = urls
+                    if("function" in log.text):
+                        content = log.text
+                        if (content.startswith("\'") and content.endswith("\'")) or (content.startswith('\"') and content.endswith('\"')):
+                                content = content[1:-1]
+                        nexthtml=content
 
                 def handle_route(route):
                     nonlocal sniffed_url
@@ -259,7 +290,7 @@ def runBrowser(htmlcode):
                         if "https://xrom/" in url:
                             url= url.replace("https://xrom/", "http://xromtv.com/")
                         sniffed_url =url
-                        return sniffed_url
+                        return sniffed_url,None
 
                     if url.endswith(".mpd"):
                         route.abort()
@@ -268,10 +299,12 @@ def runBrowser(htmlcode):
                     route.continue_()
 
                 browser = p.chromium.launch(headless=True)
-                context = browser.new_context()
+                context = browser.new_context(user_agent="Mozilla/5.0 (Linux; U; Android 4.2.2; en-us; AFTM Build/JDQ39) AppleWebKit/534.30 (KHTML, like Gecko) Version/4.0 Mobile Safari/534.30")
                 page = context.new_page()
 
                 context.route("**/*", handle_route)
+                page.on("console",handle_log)
+                page.on("*", xx)
 
                 page.goto(f"http://127.0.0.1:{port}/index.html", wait_until="networkidle")
 
@@ -279,12 +312,17 @@ def runBrowser(htmlcode):
 
     except Exception as e:
         print(f"runBrowser error: {e}")
-        return None
+        return None,None
     finally:
         server.shutdown()
         server.server_close()
-    return sniffed_url
+    return sniffed_url, nexthtml
 
+def injectCodeLogging(html_code):
+    html_code= html_code.replace("new Function(_0xO)","console.log(_0xO);new Function(_0xO)").replace("_d['open']();_d['write'](_r);_d['close']();","_d['open']();_d['write'](_r);_d['close']();console.log(_r);").replace("return;","")
+    if("<script>" not in html_code):
+        html_code = "<script>"+html_code+"</script>"
+    return html_code
 
 def extract_playlist_json_urls(config_text):
     playlist.extend(extract_m3u_urls(config_text))
@@ -505,6 +543,19 @@ def main():
             parsed = parse_m3u_content(content)
             print(f"Canali trovati: {len(parsed)}")
             all_channels.extend(parsed)
+
+
+    extract_ppv_html_content(config_text, {"-XR-HSOEH-","-XR-WLODU-","-XR-EKOSY-","-XR-KWLEO-"})
+    if playlist:
+        for p in playlist:
+            token = download_playlist_via_proxy(p)
+            content = download_playlist_via_proxy(token)
+            if content:
+                if 'EXTM3U' not in content:
+                    content = decrypt_payload(content)
+                parsed = parse_m3u_content(content)
+                print(f"Canali trovati: {len(parsed)}")
+                all_channels.extend(parsed)
 
     unique_channels = merge_channels(all_channels)
     final_channels = unique_channels + channels
