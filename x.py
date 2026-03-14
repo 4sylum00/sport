@@ -547,8 +547,21 @@ def main():
 
     extract_ppv_html_content(config_text, {"-XR-HSOEH-","-XR-WLODU-","-XR-EKOSY-","-XR-KWLEO-"})
     if playlist:
-        for p in playlist:
-            token = download_playlist_via_proxy(p)
+        distinct = []
+        for p in playlist :
+            if p not in distinct:
+                distinct.append(p)
+        
+        for p in distinct:
+            tokenOk = False
+            token = None
+            while(not tokenOk):
+                time.sleep(2)
+                token = download_playlist_via_proxy(p)
+                if("expires=" in token):
+                    print(token)
+                    tokenOk = True
+
             content = download_playlist_via_proxy(token)
             if content:
                 if 'EXTM3U' not in content:
